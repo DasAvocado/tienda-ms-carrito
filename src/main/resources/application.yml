@@ -1,0 +1,22 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: carrito-ms
+  datasource:
+    url: jdbc:postgresql://postgres-db:5432/pedidos360
+    username: admin
+    password: password123
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://login.microsoftonline.com/d276cca8-e687-4f20-8984-601387d11401/v2.0
