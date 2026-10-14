@@ -1,0 +1,9 @@
+services:
+  ms-carrito:
+    build: .
+    image: pedidos360/ms-carrito
+    container_name: ms-carrito
+    restart: unless-stopped
+    ports:
+      - "8082:8082"
+    env_file: .env      # copia .env.example a .env y completa los valores
