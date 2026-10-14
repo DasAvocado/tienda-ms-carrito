@@ -1,12 +1,11 @@
 package com.tienda.ms_carrito.service;
 
-import com.tienda.ms_carrito.config.RabbitMQConfig;
 import com.tienda.ms_carrito.dto.CheckoutEvent;
 import com.tienda.ms_carrito.dto.CheckoutResponse;
 import com.tienda.ms_carrito.dto.ItemRequest;
+import com.tienda.ms_carrito.messaging.CheckoutPublisher;
 import com.tienda.ms_carrito.model.ItemCarrito;
 import com.tienda.ms_carrito.repository.ItemCarritoRepository;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,11 +17,11 @@ import java.util.List;
 public class CarritoService {
 
     private final ItemCarritoRepository repo;
-    private final RabbitTemplate rabbitTemplate;
+    private final CheckoutPublisher checkoutPublisher;
 
-    public CarritoService(ItemCarritoRepository repo, RabbitTemplate rabbitTemplate) {
+    public CarritoService(ItemCarritoRepository repo, CheckoutPublisher checkoutPublisher) {
         this.repo = repo;
-        this.rabbitTemplate = rabbitTemplate;
+        this.checkoutPublisher = checkoutPublisher;
     }
 
     @Transactional(readOnly = true)
@@ -93,8 +92,7 @@ public class CarritoService {
                 .toList();
         double total = itemsEvento.stream().mapToDouble(i -> i.precio() * i.cantidad()).sum();
 
-        rabbitTemplate.convertAndSend(RabbitMQConfig.EXCHANGE, RabbitMQConfig.RK_CHECKOUT,
-                new CheckoutEvent(usuarioId, email, nombre, itemsEvento));
+        checkoutPublisher.publicar(new CheckoutEvent(usuarioId, email, nombre, itemsEvento));
 
         repo.deleteByUsuarioId(usuarioId);
         return new CheckoutResponse("EN_PROCESO", "Compra recibida. Tu orden se esta procesando.", total);

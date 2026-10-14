@@ -17,8 +17,16 @@ spring:
     port: ${RABBIT_PORT:5672}
     username: ${RABBIT_USER:guest}
     password: ${RABBIT_PASSWORD:guest}
+    # Confirmaciones del broker + mensajes no enrutables (se registran en log; ver RabbitConfig)
+    publisher-confirm-type: correlated
+    publisher-returns: true
 
 app:
+  # ---- RabbitMQ: TODOS los nombres de mensajeria de este servicio se definen aqui ----
+  rabbit:
+    exchange: pedidos360.events
+    routing-keys:
+      checkout: carrito.checkout         # publica
   azure:
     tenant-id: ${AZURE_TENANT_ID:d276cca8-e687-4f20-8984-601387d11401}
     client-id: ${AZURE_CLIENT_ID:39a9591b-35f1-4165-8cf2-667a2c643920}
