@@ -2,11 +2,15 @@ package com.tienda.ms_carrito.controller;
 
 import com.tienda.ms_carrito.dto.CantidadRequest;
 import com.tienda.ms_carrito.dto.CheckoutResponse;
+import com.tienda.ms_carrito.dto.CuponRequest;
+import com.tienda.ms_carrito.dto.EnvioRequest;
 import com.tienda.ms_carrito.dto.ItemRequest;
+import com.tienda.ms_carrito.dto.ResumenCarrito;
 import com.tienda.ms_carrito.model.ItemCarrito;
 import com.tienda.ms_carrito.security.Seguridad;
 import com.tienda.ms_carrito.security.UsuarioActual;
 import com.tienda.ms_carrito.service.CarritoService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -25,7 +29,13 @@ import java.util.List;
  *   PUT    /api/carrito/items/{id}    -> cambiar cantidad {cantidad}
  *   DELETE /api/carrito/items/{id}    -> quitar item
  *   DELETE /api/carrito/items         -> vaciar carrito
- *   POST   /api/carrito/checkout      -> confirmar compra (publica evento en RabbitMQ)
+ *   GET    /api/carrito/resumen       -> subtotal, descuento, envio y total (calculados en el servidor)
+ *   POST   /api/carrito/cupon         -> aplicar cupon {codigo}  (BIENVENIDA10, FRENOS15, ENVIOGRATIS)
+ *   DELETE /api/carrito/cupon         -> quitar cupon
+ *   PUT    /api/carrito/envio         -> tipo de envio {tipo: RETIRO|ESTANDAR|EXPRESS}
+ *   POST   /api/carrito/checkout      -> compra SIN pago (deshabilitado por defecto: la compra la cierra ms-pagos)
+ *
+ * Cada interaccion publica un evento en Kafka (pedidos360.navegacion) para ms-recomendaciones.
  */
 @RestController
 @RequestMapping("/api/carrito")
@@ -33,9 +43,31 @@ import java.util.List;
 public class CarritoController {
 
     private final CarritoService service;
+    private final boolean checkoutDirecto;
 
-    public CarritoController(CarritoService service) {
+    public CarritoController(CarritoService service, @Value("${app.checkout-directo:false}") boolean checkoutDirecto) {
         this.service = service;
+        this.checkoutDirecto = checkoutDirecto;
+    }
+
+    @GetMapping("/resumen")
+    public ResumenCarrito resumen(@AuthenticationPrincipal Jwt jwt) {
+        return service.resumen(UsuarioActual.id(jwt));
+    }
+
+    @PostMapping("/cupon")
+    public ResumenCarrito aplicarCupon(@AuthenticationPrincipal Jwt jwt, @RequestBody CuponRequest body) {
+        return service.aplicarCupon(UsuarioActual.id(jwt), body.codigo());
+    }
+
+    @DeleteMapping("/cupon")
+    public ResumenCarrito quitarCupon(@AuthenticationPrincipal Jwt jwt) {
+        return service.quitarCupon(UsuarioActual.id(jwt));
+    }
+
+    @PutMapping("/envio")
+    public ResumenCarrito elegirEnvio(@AuthenticationPrincipal Jwt jwt, @RequestBody EnvioRequest body) {
+        return service.elegirEnvio(UsuarioActual.id(jwt), body.tipo() == null ? "" : body.tipo());
     }
 
     @GetMapping
@@ -69,6 +101,10 @@ public class CarritoController {
 
     @PostMapping("/checkout")
     public ResponseEntity<CheckoutResponse> checkout(@AuthenticationPrincipal Jwt jwt) {
+        if (!checkoutDirecto) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(new CheckoutResponse("REQUIERE_PAGO",
+                    "La compra se confirma desde ms-pagos (POST /api/pagos/tarjeta o Webpay)", 0));
+        }
         CheckoutResponse resp = service.checkout(UsuarioActual.id(jwt), UsuarioActual.email(jwt), UsuarioActual.nombre(jwt));
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(resp);
     }

@@ -2,6 +2,11 @@ package com.tienda.ms_carrito.config;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.amqp.core.Binding;
+import org.springframework.amqp.core.BindingBuilder;
+import org.springframework.amqp.core.DirectExchange;
+import org.springframework.amqp.core.Queue;
+import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.core.TopicExchange;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -12,17 +17,51 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * ms-carrito solo PUBLICA eventos (carrito.checkout) en la exchange topic "pedidos360.events".
- * Los nombres se definen en application.yml (app.rabbit.*).
+ * Topologia RabbitMQ de ms-carrito. Los NOMBRES se definen solo en application.yml (app.rabbit.*).
+ *
+ *   [pedidos360.events] --pago.aprobado--> carrito.pago-aprobado   (consume PagoAprobadoConsumer)
+ *   carrito.pago-aprobado --(rechazo/reintentos agotados)--> [pedidos360.dlx] --> carrito.pago-aprobado.dlq
+ *   ms-carrito PUBLICA carrito.checkout en [pedidos360.events] (CheckoutPublisher)
  */
 @Configuration
 public class RabbitMQConfig {
 
     private static final Logger log = LoggerFactory.getLogger(RabbitMQConfig.class);
 
+    @Value("${app.rabbit.exchange}") private String exchange;
+    @Value("${app.rabbit.dlx}") private String dlx;
+    @Value("${app.rabbit.routing-keys.pago-aprobado}") private String rkPagoAprobado;
+    @Value("${app.rabbit.queues.pago-aprobado}") private String colaPago;
+    @Value("${app.rabbit.queues.pago-aprobado-dlq}") private String colaPagoDlq;
+
     @Bean
-    public TopicExchange eventosExchange(@Value("${app.rabbit.exchange}") String exchange) {
+    public TopicExchange eventosExchange() {
         return new TopicExchange(exchange, true, false);
+    }
+
+    @Bean
+    public DirectExchange deadLetterExchange() {
+        return new DirectExchange(dlx, true, false);
+    }
+
+    @Bean
+    public Queue colaPagoAprobado() {
+        return QueueBuilder.durable(colaPago).deadLetterExchange(dlx).deadLetterRoutingKey(colaPagoDlq).build();
+    }
+
+    @Bean
+    public Binding bindingPagoAprobado() {
+        return BindingBuilder.bind(colaPagoAprobado()).to(eventosExchange()).with(rkPagoAprobado);
+    }
+
+    @Bean
+    public Queue colaPagoAprobadoDlq() {
+        return QueueBuilder.durable(colaPagoDlq).build();
+    }
+
+    @Bean
+    public Binding bindingPagoAprobadoDlq() {
+        return BindingBuilder.bind(colaPagoAprobadoDlq()).to(deadLetterExchange()).with(colaPagoDlq);
     }
 
     @Bean
